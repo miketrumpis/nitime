@@ -165,7 +165,7 @@ def granger_causality_xy(a, cov, Nfreqs=1024):
     """
 
     w, Hw = transfer_function_xy(a, Nfreqs=Nfreqs)
-    
+
     sigma = cov[0,0]; upsilon = cov[0,1]; gamma = cov[1,1]
 
     # this transformation of the transfer functions computes the
