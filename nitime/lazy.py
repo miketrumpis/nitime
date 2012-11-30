@@ -51,6 +51,9 @@ scipy_signal_signaltools = LazyImport('scipy.signal.signaltools')
 scipy_stats = LazyImport('scipy.stats')
 scipy_stats_distributions = LazyImport('scipy.stats.distributions')
 
+# fftwmod
+fftwmod = LazyImport('fftwmod')
+
 def enabled():
     "Returns ``True`` if LazyImports are globally enabled"
     import nitime.lazyimports as l

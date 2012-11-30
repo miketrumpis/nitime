@@ -16,8 +16,7 @@ from nitime.lazy import matplotlib_mlab as mlab
 from nitime.lazy import scipy_linalg as linalg
 from nitime.lazy import scipy_signal as sig
 from nitime.lazy import scipy_interpolate as interpolate
-from nitime.lazy import scipy_fftpack as fftpack
-
+from nitime.lazy import fftwmod
 import nitime.utils as utils
 
 # To support older versions of numpy that don't have tril_indices:
@@ -241,7 +240,7 @@ def periodogram(s, Fs=2 * np.pi, Sk=None, N=None,
         N = Sk.shape[-1]
     else:
         N = s.shape[-1] if not N else N
-        Sk = fftpack.fft(s, n=N)
+        Sk = fftwmod.fft1(s, n=N)
     pshape = list(Sk.shape)
     norm = float(s.shape[-1])
 
@@ -334,7 +333,7 @@ def periodogram_csd(s, Fs=2 * np.pi, Sk=None, NFFT=None, sides='default',
             N = NFFT
         else:
             N = s.shape[-1]
-        Sk_loc = fftpack.fft(s, n=N)
+        Sk_loc = fftwmod.fft1(s, n=N)
     # reset s.shape
     s.shape = s_shape
 
@@ -565,10 +564,11 @@ def tapered_spectra(s, tapers, NFFT=None, low_bias=True):
     tapered = s[sig_sl] * tapers
 
     # compute the y_{i,k}(f)
-    if tapered.dtype in np.sctypes['float']:
-        t_spectra = fftpack.rfft(tapered, n=NFFT, axis=-1)
+    if tapered.dtype in np.sctypes['complex']:
+        fftwmod.fft1(tapered, n=NFFT, axis=-1, inplace=True)
+        t_spectra = tapered
     else:
-        t_spectra = fftpack.fft(tapered, n=NFFT, axis=-1)
+        t_spectra = fftwmod.fft1(tapered, n=NFFT, axis=-1)
     t_spectra.shape = rest_of_dims + (K, NFFT)
     if eigvals is None:
         return t_spectra
