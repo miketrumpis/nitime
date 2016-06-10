@@ -301,4 +301,27 @@ def test_detect_lines_2dmode():
     consistent2 = (lines[0][1] == lines[1][1]).all() and \
       (lines[1][1] == lines[2][1]).all()
 
-    npt.assert_(consistent1 and consistent2, 'Inconsistent results')
+    nt.assert_true(consistent1 and consistent2, 'Inconsistent results')
+
+def test_cython_adaptive_weights():
+    """
+    Test consistency of cython/python routines
+    """
+
+    from scipy.signal import detrend
+    n = 0
+    errs = np.zeros( (10, 5, 257) )
+    while n < 10:
+        sig = np.random.randn(512)
+        sig = np.cumsum(sig)
+        sig = detrend(sig, type='linear')
+
+        yk, eigs = alg.tapered_spectra(sig, (3, 5))
+        w1, nu1 = utils.adaptive_weights(yk, eigs)
+        w2, nu2 = utils.slow_adaptive_weights(yk, eigs)
+
+        errs[n] = ( w1 - w2 ) ** 2 / w2**2
+        n += 1
+
+    nt.assert_true( errs.mean() < 1e-2, 'Larger than 1% error' )
+
