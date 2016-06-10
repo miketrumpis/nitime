@@ -444,7 +444,7 @@ def jackknifed_coh_variance(tx, ty, eigvals, adaptive=True):
 #-----------------------------------------------------------------------------
 # Multitaper utils
 #-----------------------------------------------------------------------------
-def adaptive_weights(yk, eigvals, sides='onesided', max_iter=150):
+def slow_adaptive_weights(yk, eigvals, sides='onesided', max_iter=150):
     r"""
     Perform an iterative procedure to find the optimal weights for K
     direct spectral estimators of DPSS tapered signals.
@@ -520,7 +520,7 @@ def adaptive_weights(yk, eigvals, sides='onesided', max_iter=150):
     err = np.zeros((K, L))
     # for numerical considerations, don't bother doing adaptive
     # weighting after 150 dB down
-    min_pwr = sdf_iter.max() * 10 ** (-150/20.)
+    min_pwr = sdf_iter.max() * 10 ** (-150/10.)
     default_weights = np.where(sdf_iter < min_pwr)[0]
     adaptiv_weights = np.where(sdf_iter >= min_pwr)[0]
 
@@ -539,7 +539,6 @@ def adaptive_weights(yk, eigvals, sides='onesided', max_iter=150):
         # iteration only stops when all frequencies have converged.
         # A better approach is to iterate separately for each freq, but
         # that is a nonvectorized algorithm.
-        #sdf_iter = mtm_cross_spectrum(yk, yk, d_k, sides=sides)
         sdf_iter = np.sum( d_k**2 * d_sdfs, axis=0 )
         sdf_iter /= np.sum( d_k**2, axis=0 )
         # Compute the cost function from eq 5.4 in Thomson 1982
@@ -550,17 +549,25 @@ def adaptive_weights(yk, eigvals, sides='onesided', max_iter=150):
         # this should be a good heuristic
         if np.percentile(cfn**2, 95) < 1e-12:
             break
-    else:  # If you have reached maximum number of iterations
+    if n == max_iter - 1:
         # Issue a warning and return non-converged weights:
         e_s = 'Breaking due to iterative meltdown in '
         e_s += 'nitime.utils.adaptive_weights.'
         warnings.warn(e_s, RuntimeWarning)
+
     weights = np.zeros( (K,L) )
     weights[:,adaptiv_weights] = d_k
     weights[:,default_weights] = w_def
     nu = 2 * (weights ** 2).sum(axis=-2)
     return weights, nu
 
+try:
+    from _utils import adaptive_weights
+
+# If that doesn't work, we define it here:
+except ImportError:
+    adaptive_weights = slow_adaptive_weights
+    
 def detect_lines(s, tapers, p=None, **taper_kws):
     """
     Detect the presence of line spectra in s using the F-test
