@@ -107,14 +107,15 @@ def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk,
     from nitime.algorithms import mtm_cross_spectrum
     K = len(eigvals)
     if K < 3:
-        print("""
-        Warning--not adaptively combining the spectral estimators
-        due to a low number of tapers.
-        """)
+        ## print("""
+        ## Warning--not adaptively combining the spectral estimators
+        ## due to a low number of tapers.
+        ## """)
         # we'll hope this is a correct length for L
-        N = yk.shape[-1]
+        N = yk.shape[1]
         L = N / 2 + 1 if sides == 'onesided' else N
-        return (np.multiply.outer(np.sqrt(eigvals), np.ones(L)), 2 * K)
+        def_weights = np.tile( np.sqrt(eigvals)[:, None], (1, L))
+        return (def_weights, np.ones( (L,) ) *2 * K)
 
     cdef cnp.ndarray[cnp.float64_t, ndim=1] rt_eig = np.empty( (K,) )
     rt_eig[:] = np.sqrt(eigvals)
@@ -215,6 +216,7 @@ def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk,
                     d_k[f, k] = w_def[k, f]
                 break
             cfn_init = cfn
-            
-    nu = 2 * (d_k ** 2).sum(axis=-2)
+
+    # d_k is now L x K
+    nu = 2 * (d_k ** 2).sum(axis=-1)
     return d_k.T, nu.T
