@@ -12,6 +12,7 @@ cimport numpy as cnp
 cimport cython
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 def tridisolve(cnp.ndarray[cnp.npy_double, ndim=1] d,
                cnp.ndarray[cnp.npy_double, ndim=1] e,
                cnp.ndarray[cnp.npy_double, ndim=1] b, overwrite_b=True):
@@ -66,6 +67,7 @@ def tridisolve(cnp.ndarray[cnp.npy_double, ndim=1] d,
         return x
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
 def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk, 
                      cnp.ndarray[cnp.npy_double, ndim=1] eigvals, 
                      sides='onesided', max_iter=150):
@@ -168,6 +170,7 @@ def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk,
     cdef double sdf_den
     cdef double cfn_num
     cdef double cfn_den
+    cdef double err
     total_iters = 0
     
     for f in xrange(L):
@@ -204,7 +207,8 @@ def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk,
                 cfn_den += eigvals[k] * sdf_iter - bband_sup[k]
             cfn = cfn_num / cfn_den
 
-            if (cfn == 0) or (np.abs(cfn - cfn_init) < 1e-2 * np.abs(cfn_init)):
+            err = cfn - cfn_init
+            if (cfn == 0) or (err**2 < 1e-4 * cfn_init**2):
                 #print 'breaking', n, 'iters'
                 total_iters += n
                 break
