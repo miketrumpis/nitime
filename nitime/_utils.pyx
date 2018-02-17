@@ -126,7 +126,7 @@ def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk,
     # the variance of the timeseries
     N = yk.shape[1]
     sdf = mtm_cross_spectrum(yk, yk, eigvals[:, None], sides=sides)
-    L = sdf.shape[-1]
+    L = sdf.shape[0]
     var_est = np.sum(sdf, axis=-1) / N
     
     cdef cnp.ndarray[cnp.float64_t, ndim=1] bband_sup = np.empty( (K,) )
@@ -154,7 +154,8 @@ def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk,
     # weighting after 150 dB down
     min_pwr = sdf_two.max() * 10 ** (-150/10.)
 
-    w_def = rt_eig[:,None] * sdf_two
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] w_def = np.empty( (K, L), 'd' )
+    w_def[:] = rt_eig[:,None] * sdf_two
     w_def /= eigvals[:, None] * sdf_two + bband_sup[:,None]
 
     cdef cnp.ndarray[cnp.float64_t, ndim=2] d_sdfs = np.empty( (L, K) )
@@ -170,6 +171,8 @@ def adaptive_weights(cnp.ndarray[cnp.npy_complex128, ndim=2] yk,
     cdef double sdf_den
     cdef double cfn_num
     cdef double cfn_den
+    cdef double cfn_init
+    cdef double cfn
     cdef double err
     total_iters = 0
     
