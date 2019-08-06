@@ -606,8 +606,6 @@ def dpss_windows(N, NW, Kmax, interp_from=None, interp_kind='linear'):
     Volume 57 (1978), 1371430
     """
     Kmax = int(Kmax)
-    W = float(NW) / N
-    nidx = np.arange(N, dtype='d')
 
     # In this case, we create the dpss windows of the smaller size
     # (interp_from) and then interpolate to the larger size (N)
@@ -630,68 +628,11 @@ def dpss_windows(N, NW, Kmax, interp_from=None, interp_kind='linear'):
             dpss.append(d_temp)
 
         dpss = np.array(dpss)
-
+        return dpss, e
     else:
-        # here we want to set up an optimization problem to find a sequence
-        # whose energy is maximally concentrated within band [-W,W].
-        # Thus, the measure lambda(T,W) is the ratio between the energy within
-        # that band, and the total energy. This leads to the eigen-system
-        # (A - (l1)I)v = 0, where the eigenvector corresponding to the largest
-        # eigenvalue is the sequence with maximally concentrated energy. The
-        # collection of eigenvectors of this system are called Slepian
-        # sequences, or discrete prolate spheroidal sequences (DPSS). Only the
-        # first K, K = 2NW/dt orders of DPSS will exhibit good spectral
-        # concentration
-        # [see http://en.wikipedia.org/wiki/Spectral_concentration_problem]
-
-        # Here I set up an alternative symmetric tri-diagonal eigenvalue
-        # problem such that
-        # (B - (l2)I)v = 0, and v are our DPSS (but eigenvalues l2 != l1)
-        # the main diagonal = ([N-1-2*t]/2)**2 cos(2PIW), t=[0,1,2,...,N-1]
-        # and the first off-diagonal = t(N-t)/2, t=[1,2,...,N-1]
-        # [see Percival and Walden, 1993]
-        diagonal = ((N - 1 - 2 * nidx) / 2.) ** 2 * np.cos(2 * np.pi * W)
-        off_diag = np.zeros_like(nidx)
-        off_diag[:-1] = nidx[1:] * (N - nidx[1:]) / 2.
-        # put the diagonals in LAPACK "packed" storage
-        ab = np.zeros((2, N), 'd')
-        ab[1] = diagonal
-        ab[0, 1:] = off_diag[:-1]
-        # only calculate the highest Kmax eigenvalues
-        w = linalg.eigvals_banded(ab, select='i',
-                                  select_range=(N - Kmax, N - 1))
-        w = w[::-1]
-
-        # find the corresponding eigenvectors via inverse iteration
-        t = np.linspace(0, np.pi, N)
-        dpss = np.zeros((Kmax, N), 'd')
-        for k in range(Kmax):
-            dpss[k] = tridi_inverse_iteration(
-                diagonal, off_diag, w[k], x0=np.sin((k + 1) * t)
-                )
-
-    # By convention (Percival and Walden, 1993 pg 379)
-    # * symmetric tapers (k=0,2,4,...) should have a positive average.
-    # * antisymmetric tapers should begin with a positive lobe
-    fix_symmetric = (dpss[0::2].sum(axis=1) < 0)
-    for i, f in enumerate(fix_symmetric):
-        if f:
-            dpss[2 * i] *= -1
-    # rather than test the sign of one point, test the sign of the
-    # linear slope up to the first (largest) peak
-    pk = np.argmax(np.abs(dpss[1::2, :N//2]), axis=1)
-    for i, p in enumerate(pk):
-        if np.sum(dpss[2 * i + 1, :p]) < 0:
-            dpss[2 * i + 1] *= -1
-
-    # Now find the eigenvalues of the original spectral concentration problem
-    # Use the autocorr sequence technique from Percival and Walden, 1993 pg 390
-    dpss_rxx = autocorr(dpss) * N
-    r = 4 * W * np.sinc(2 * W * nidx)
-    r[0] = 2 * W
-    eigvals = np.dot(dpss_rxx, r)
-
-    return dpss, eigvals
+        # Call scipy.signal.windows.dpss
+        from scipy.signal.windows import dpss
+        return dpss(N, NW, Kmax=Kmax, sym=False, norm=2, return_ratios=True)
 
 
 def tapered_spectra(s, tapers, NFFT=None, low_bias=True):
@@ -875,103 +816,6 @@ def detect_lines(s, tapers, p=None, **taper_kws):
         lines = lines[0]
     return lines
 
-
-#-----------------------------------------------------------------------------
-# Eigensystem utils
-#-----------------------------------------------------------------------------
-
-# If we can get it, we want the cythonized version
-try:
-    from _utils import tridisolve
-
-# If that doesn't work, we define it here:
-except ImportError:
-    def tridisolve(d, e, b, overwrite_b=True):
-        """
-        Symmetric tridiagonal system solver,
-        from Golub and Van Loan, Matrix Computations pg 157
-
-        Parameters
-        ----------
-
-        d : ndarray
-          main diagonal stored in d[:]
-        e : ndarray
-          superdiagonal stored in e[:-1]
-        b : ndarray
-          RHS vector
-
-        Returns
-        -------
-
-        x : ndarray
-          Solution to Ax = b (if overwrite_b is False). Otherwise solution is
-          stored in previous RHS vector b
-
-        """
-        N = len(b)
-        # work vectors
-        dw = d.copy()
-        ew = e.copy()
-        if overwrite_b:
-            x = b
-        else:
-            x = b.copy()
-        for k in range(1, N):
-            # e^(k-1) = e(k-1) / d(k-1)
-            # d(k) = d(k) - e^(k-1)e(k-1) / d(k-1)
-            t = ew[k - 1]
-            ew[k - 1] = t / dw[k - 1]
-            dw[k] = dw[k] - t * ew[k - 1]
-        for k in range(1, N):
-            x[k] = x[k] - ew[k - 1] * x[k - 1]
-        x[N - 1] = x[N - 1] / dw[N - 1]
-        for k in range(N - 2, -1, -1):
-            x[k] = x[k] / dw[k] - ew[k] * x[k + 1]
-
-        if not overwrite_b:
-            return x
-
-
-def tridi_inverse_iteration(d, e, w, x0=None, rtol=1e-8):
-    """Perform an inverse iteration to find the eigenvector corresponding
-    to the given eigenvalue in a symmetric tridiagonal system.
-
-    Parameters
-    ----------
-
-    d : ndarray
-      main diagonal of the tridiagonal system
-    e : ndarray
-      offdiagonal stored in e[:-1]
-    w : float
-      eigenvalue of the eigenvector
-    x0 : ndarray
-      initial point to start the iteration
-    rtol : float
-      tolerance for the norm of the difference of iterates
-
-    Returns
-    -------
-
-    e : ndarray
-      The converged eigenvector
-
-    """
-    eig_diag = d - w
-    if x0 is None:
-        x0 = np.random.randn(len(d))
-    x_prev = np.zeros_like(x0)
-    norm_x = np.linalg.norm(x0)
-    # the eigenvector is unique up to sign change, so iterate
-    # until || |x^(n)| - |x^(n-1)| ||^2 < rtol
-    x0 /= norm_x
-    while np.linalg.norm(np.abs(x0) - np.abs(x_prev)) > rtol:
-        x_prev = x0.copy()
-        tridisolve(eig_diag, e, x0)
-        norm_x = np.linalg.norm(x0)
-        x0 /= norm_x
-    return x0
 
 #-----------------------------------------------------------------------------
 # Correlation/Covariance utils
